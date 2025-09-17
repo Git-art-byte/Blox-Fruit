@@ -26,7 +26,7 @@ getgenv().BETA_VERSION = true
 loadstring(game:HttpGet("https://raw.githubusercontent.com/tlredz/Scripts/refs/heads/main/main.luau"))(Settings)
 ```
 
-## 99 Night in the forest **Diamond** AutoFarm
+## 99 Night in the forest Diamond AutoFarm
 ```lua
 getgenv().WebhookURL = "" --If not used do not write anything
 getgenv().AutoFarm = true
