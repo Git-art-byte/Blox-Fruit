@@ -111,7 +111,7 @@ G2L["GameID_a"]["FontFace"] = Font.new("rbxasset://fonts/families/GothamSSm.json
 G2L["GameID_a"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
 G2L["GameID_a"]["BackgroundTransparency"] = 1
 G2L["GameID_a"]["Size"] = UDim2.new(0, 390, 0, 86)
-G2L["GameID_a"]["Text"] = "Game ID: " .. tostring(game.PlaceId)
+G2L["GameID_a"]["Text"] = tostring(game.PlaceId)
 G2L["GameID_a"]["Name"] = "GameID"
 G2L["GameID_a"]["Position"] = UDim2.new(0, 106, 0, 142)
 
@@ -126,7 +126,7 @@ G2L["StatusLabel_b"]["FontFace"] = Font.new("rbxasset://fonts/families/GothamSSm
 G2L["StatusLabel_b"]["TextColor3"] = Color3.fromRGB(200, 200, 200)
 G2L["StatusLabel_b"]["BackgroundTransparency"] = 1
 G2L["StatusLabel_b"]["Size"] = UDim2.new(0, 400, 0, 30)
-G2L["StatusLabel_b"]["Text"] = "Executor Mode - Ready to Track"
+G2L["StatusLabel_b"]["Text"] = "Ready"
 G2L["StatusLabel_b"]["Name"] = "StatusLabel"
 G2L["StatusLabel_b"]["Position"] = UDim2.new(0, 56, 0, 200)
 
@@ -180,31 +180,8 @@ imageCorner["CornerRadius"] = UDim.new(0, 15)
 G2L["UIScale_f"] = Instance.new("UIScale", G2L["MainFrame_2"])
 
 -- ============================================================================
--- PLAYER TRACKING FUNCTIONS (EXECUTOR ONLY)
+-- PLAYER TRACKING FUNCTIONS (REALISTIC EXECUTOR VERSION)
 -- ============================================================================
-
--- HTTP request function (executor methods)
-local function httpRequest(url, method, headers)
-    local request = syn and syn.request or http and http.request or request
-    if not request then
-        return false, "No HTTP request method available"
-    end
-    
-    local success, response = pcall(function()
-        return request({
-            Url = url,
-            Method = method or "GET",
-            Headers = headers or {
-                ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-        })
-    end)
-    
-    if success and response.StatusCode == 200 then
-        return true, response.Body
-    end
-    return false, response
-end
 
 -- Function to get user ID from username
 local function getUserId(username)
@@ -214,46 +191,66 @@ local function getUserId(username)
     return success and result or nil
 end
 
--- Function to get game instances
-local function getGameInstances(placeId)
-    local success, body = httpRequest("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100")
+-- Function to get game instances using TeleportService
+local function getServerList()
+    local servers = {}
+    local success, result = pcall(function()
+        -- This method uses TeleportService to get server info
+        return game:GetService("TeleportService"):GetTeleportSettings()
+    end)
     
-    if success then
-        local data = HttpService:JSONDecode(body)
-        return data.data or {}
+    -- Alternative: Use HTTP to get public servers (limited success)
+    local httpRequest = syn and syn.request or http and http.request or request
+    if httpRequest then
+        local success, response = pcall(function()
+            return httpRequest({
+                Url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=10",
+                Method = "GET",
+                Headers = {
+                    ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }
+            })
+        end)
+        
+        if success and response.StatusCode == 200 then
+            local data = HttpService:JSONDecode(response.Body)
+            return data.data or {}
+        end
     end
     
     return {}
 end
 
--- Function to check if player is in specific server
-local function getPlayerPresence(userId)
-    local success, body = httpRequest("https://presence.roblox.com/v1/presence/users", "POST", {
-        ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        ["Content-Type"] = "application/json"
-    })
+-- Realistic server hopping function
+local function hopToRandomServer()
+    local servers = getServerList()
     
-    if success then
-        local data = HttpService:JSONDecode(body)
-        return data.userPresences and data.userPresences[1] or nil
-    end
-    
-    return nil
-end
-
--- Advanced server search function
-local function findPlayerInServers(username, userId, placeId)
-    local servers = getGameInstances(placeId)
-    
-    -- Method 1: Check server player lists (limited info available)
-    for _, server in pairs(servers) do
-        if server.id and server.playing and server.playing > 0 then
-            -- This is a potential server where the player might be
-            -- We'll try each server until we find the player
-            return server.id
+    if #servers > 0 then
+        -- Pick a random server
+        local randomServer = servers[math.random(1, #servers)]
+        if randomServer and randomServer.id then
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer.id)
+            end)
+            return true
         end
     end
     
+    -- Fallback: Use TeleportService to join a random server
+    pcall(function()
+        TeleportService:Teleport(game.PlaceId)
+    end)
+    return false
+end
+
+-- Check if player is in current server
+local function findPlayerInCurrentServer(username)
+    for _, player in pairs(Players:GetPlayers()) do
+        if string.lower(player.Name):find(string.lower(username), 1, true) or 
+           string.lower(player.DisplayName):find(string.lower(username), 1, true) then
+            return player
+        end
+    end
     return nil
 end
 
@@ -371,54 +368,54 @@ G2L["JoinButton_7"].MouseButton1Click:Connect(function()
     G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 165, 0)
     updateStatus("Tracking " .. username .. " across servers...", Color3.fromRGB(255, 255, 0))
     
-    -- Executor tracking logic
+    -- Executor tracking logic (realistic version)
     spawn(function()
-        local userId = getUserId(username)
-        if userId then
-            updateStatus("User found! Scanning servers...", Color3.fromRGB(255, 200, 0))
+        -- First check current server
+        local currentPlayer = findPlayerInCurrentServer(username)
+        if currentPlayer then
+            updateStatus("Player found in current server!", Color3.fromRGB(0, 255, 0))
+            G2L["JoinButton_7"]["Text"] = "Already Here!"
+            G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(0, 200, 0)
             
-            local serverId = findPlayerInServers(username, userId, game.PlaceId)
-            if serverId then
-                updateStatus("Player located! Joining server...", Color3.fromRGB(0, 255, 0))
-                G2L["JoinButton_7"]["Text"] = "Joining..."
-                G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(0, 200, 0)
-                
-                -- Attempt to join the server
-                pcall(function()
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId)
-                end)
-                
-                -- Fallback: Try different server hopping method
-                wait(2)
-                updateStatus("Trying alternative method...", Color3.fromRGB(255, 200, 0))
-                
-                -- Server hop method for executors
-                local servers = getGameInstances(game.PlaceId)
-                for i, server in pairs(servers) do
-                    if i <= 5 then -- Try first 5 servers
-                        pcall(function()
-                            TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
-                        end)
-                        wait(1)
-                    end
-                end
-                
-            else
-                updateStatus("Player not found or in private server", Color3.fromRGB(255, 100, 100))
-                G2L["JoinButton_7"]["Text"] = "Not Found"
-                G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 50, 50)
-            end
-        else
+            wait(3)
+            G2L["JoinButton_7"]["Text"] = "Join Player"
+            G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(6, 227, 20)
+            updateStatus("Ready", Color3.fromRGB(200, 200, 200))
+            return
+        end
+        
+        -- Check if username exists
+        local userId = getUserId(username)
+        if not userId then
             updateStatus("Invalid username!", Color3.fromRGB(255, 100, 100))
             G2L["JoinButton_7"]["Text"] = "Invalid User"
             G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 50, 50)
+            
+            wait(3)
+            G2L["JoinButton_7"]["Text"] = "Join Player"
+            G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(6, 227, 20)
+            updateStatus("Ready", Color3.fromRGB(200, 200, 200))
+            return
         end
         
-        -- Reset button after 3 seconds
-        wait(3)
-        G2L["JoinButton_7"]["Text"] = "Join Player"
-        G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(6, 227, 20)
-        updateStatus("Executor Mode - Ready to Track", Color3.fromRGB(200, 200, 200))
+        -- Attempt server hopping (realistic approach)
+        updateStatus("User exists! Attempting server hop...", Color3.fromRGB(255, 200, 0))
+        G2L["JoinButton_7"]["Text"] = "Server Hopping..."
+        G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(0, 200, 0)
+        
+        -- Try to hop to a different server
+        local success = hopToRandomServer()
+        
+        if not success then
+            updateStatus("Could not find available servers", Color3.fromRGB(255, 100, 100))
+            G2L["JoinButton_7"]["Text"] = "No Servers"
+            G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 50, 50)
+            
+            wait(3)
+            G2L["JoinButton_7"]["Text"] = "Join Player"
+            G2L["JoinButton_7"]["BackgroundColor3"] = Color3.fromRGB(6, 227, 20)
+            updateStatus("Ready", Color3.fromRGB(200, 200, 200))
+        end
     end)
 end)
 
@@ -458,7 +455,6 @@ end
 
 -- Send success notifications
 sendNotification("Player Tracker", "Loaded successfully! ✅", 3)
-sendNotification("Executor Mode", "Ready to track players across servers", 4)
 sendNotification("Game Info", "Place ID: " .. tostring(game.PlaceId), 3)
 
 local httpSupport = (syn and syn.request) or (http and http.request) or request
