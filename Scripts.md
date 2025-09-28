@@ -33,3 +33,8 @@ getgenv().AutoFarm = true
 getgenv().hop = "old"
 loadstring(game:HttpGet("https://raw.githubusercontent.com/caomod2077/Script/refs/heads/main/Farm%20Diamond%20v2.lua"))()
 ```
+
+## Player Tracker
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Git-art-byte/Roblox-Best-Scripts/main/Player%20Tracker.Luau"))()
+```
